@@ -1,38 +1,47 @@
-jobs: # basic units of work in a run
-  build: 
-    docker: # use the Docker executor
-      # CircleCI node images available at: https://hub.docker.com/r/circleci/node/
-      - image: circleci/node:10.0-browsers
-        auth:
-          username: mydockerhub-user
-          password: $DOCKERHUB_PASSWORD  # context / project UI env-var reference
-    steps: # steps that comprise the `build` job
-      - checkout # check out source code to working directory
-      # Run a step to setup an environment variable
-      # Redirect MY_ENV_VAR into $BASH_ENV
-      - run: 
-          name: "Setup custom environment variables"
-          command: echo 'export MY_ENV_VAR="FOO"' >> $BASH_ENV
-      - run: # print the name of the branch we're on
-          name: "What branch am I on?"
-          command: echo ${CIRCLE_BRANCH}
-      # Run another step, the same as above; note that you can
-      # invoke environment variable without curly braces.
-      - run:
-          name: "What branch am I on now?"
-          command: echo $CIRCLE_BRANCH
-      - run:
-          name: "What was my custom environment variable?"
-          command: echo ${MY_ENV_VAR}
-      - run:
-          name: "Print an env var stored in the Project"
-          command: echo ${PROJECT_ENV_VAR}
-      - run:
-          name: "Print an env var stored in a Context"
-          command: echo ${CONTEXT_ENV_VAR}
+version: 2
 
-workflows: # a single workflow with a single job called build
+executor-auth-aws: &executor-auth-aws
+  aws_auth:
+    aws_access_key_id: $AWS_ACCESS_KEY_ID
+    aws_secret_access_key: $AWS_SECRET_ACCESS_KEY
+
+commands:
+  aws_creds:
+    steps:
+      - run:
+          name: "aws credentials"
+          command: |
+            export AWS_ACCESS_KEY_ID=<< parameters.aws_access_key_id >>
+            export AWS_SECRET_ACCESS_KEY=<< parameters.aws_secret_key >>
+            echo "export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> $BASH_ENV
+            echo "export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> $BASH_ENV
+            source $BASH_ENV
+
+jobs:
   build:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - run: echo "hello world"
+  deploy:
+    docker:
+      - image: amazon/aws-cli
+        <<: *executor-auth-aws
+    steps:
+      - run: aws s3 ls
+
+workflows:
+  version: 2
+
+  stage_workflow:
     jobs:
       - build:
-          context: Testing-Env-Vars
+          filters:
+            branches:
+              only: master
+      - deploy:
+          filters:
+            branches:
+              only: master
+          requires:
+            - build
